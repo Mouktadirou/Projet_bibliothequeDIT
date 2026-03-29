@@ -1,0 +1,112 @@
+services:
+
+  # -------------------------------
+  # PostgreSQL 17
+  # -------------------------------
+  db-service:
+    image: postgres:17
+    container_name: postgres-bibliotheque
+    environment:
+      POSTGRES_DB: dbbibliotheque
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    volumes:
+      - bibliothequedata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d dbbibliotheque" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------
+  # PGAdmin
+  # -------------------------------
+  pgadmin-service:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin-bibliotheque
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@dit.sn
+      PGADMIN_DEFAULT_PASSWORD: admin1234
+    ports:
+      - "8081:80"
+    depends_on:
+      db-service:
+        condition: service_healthy
+    restart: always
+
+  # -------------------------------
+  # Microservice Livres
+  # -------------------------------
+  livres-service:
+    build: ./services/livres
+    container_name: service-livres
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql://admin:admin123@db-service:5432/dbbibliotheque
+    depends_on:
+      db-service:
+        condition: service_healthy
+    restart: always
+
+  # -------------------------------
+  # Microservice Utilisateurs
+  # -------------------------------
+  utilisateurs-service:
+    build: ./services/utilisateurs
+    container_name: service-utilisateurs
+    ports:
+      - "8002:8000"
+    environment:
+      DATABASE_URL: postgresql://admin:admin123@db-service:5432/dbbibliotheque
+    depends_on:
+      db-service:
+        condition: service_healthy
+    restart: always
+
+  # -------------------------------
+  # Microservice Emprunts
+  # -------------------------------
+  emprunts-service:
+    build: ./services/emprunts
+    container_name: service-emprunts
+    ports:
+      - "8003:8000"
+    environment:
+      DATABASE_URL: postgresql://admin:admin123@db-service:5432/dbbibliotheque
+    depends_on:
+      db-service:
+        condition: service_healthy
+      livres-service:
+        condition: service_started
+      utilisateurs-service:
+        condition: service_started
+    restart: always
+
+  # -------------------------------
+  # Frontend React
+  # -------------------------------
+  frontend-service:
+    build: ./frontend
+    container_name: frontend-bibliotheque
+    ports:
+      - "3000:80"
+    environment:
+      REACT_APP_LIVRES_URL: http://localhost:8001
+      REACT_APP_UTILISATEURS_URL: http://localhost:8002
+      REACT_APP_EMPRUNTS_URL: http://localhost:8003
+    depends_on:
+      - livres-service
+      - utilisateurs-service
+      - emprunts-service
+    restart: always
+
+# -------------------------------
+# Volume persistant
+# -------------------------------
+volumes:
+  bibliothequedata:
